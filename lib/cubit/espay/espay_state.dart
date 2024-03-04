@@ -47,12 +47,12 @@ class StatusFailure extends EspayState {
   List<Object> get props => [message];
 }
 
-
 class PaymentSuccess extends EspayState {
+  final PaymentStatusResponse espay;
   final String message;
 
-  const PaymentSuccess({required this.message});
+  const PaymentSuccess({required this.espay, required this.message});
 
   @override
-  List<Object> get props => [message];
+  List<Object> get props => [espay, message];
 }

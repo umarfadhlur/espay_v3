@@ -1,15 +1,11 @@
-import 'dart:async';
 import 'dart:ui';
+import 'package:intl/intl.dart';
 
 import 'package:espay_v3/cubit/espay/espay_cubit.dart';
 import 'package:espay_v3/ui/api_damcorp.dart';
 import 'package:espay_v3/ui/list_order.dart';
-import 'package:espay_v3/utils/rsa_key.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:espay_v3/utils/generate_random_string.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class ApiAccessPage extends StatefulWidget {
@@ -20,6 +16,12 @@ class ApiAccessPage extends StatefulWidget {
 }
 
 class _ApiAccessPageState extends State<ApiAccessPage> {
+  String formatCurrency(double amount) {
+    final formatCurrency =
+        NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ');
+    return formatCurrency.format(amount);
+  }
+
   Map<String, dynamic> responseData = {};
   Map<String, dynamic> responsePayment = {};
   Map<String, dynamic>? responseDatabase;
@@ -84,6 +86,7 @@ class _ApiAccessPageState extends State<ApiAccessPage> {
               bool isDialogActive(BuildContext context) {
                 return Navigator.of(context, rootNavigator: true).canPop();
               }
+
               if (isDialogActive(context)) {
                 Navigator.pop(context);
               } else {
@@ -108,7 +111,101 @@ class _ApiAccessPageState extends State<ApiAccessPage> {
             );
           } else if (state is PaymentSuccess) {
             return Center(
-              child: Text(state.message),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 150,
+                  ),
+                  Text(
+                    state.message,
+                    style: const TextStyle(
+                      fontSize: 20.0,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 10,
+                  ),
+                  Text(
+                    'Transaction ID: ${state.espay.virtualAccountData.virtualAccountNo}',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(18.0),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Total Amount Paid'),
+                            Text(
+                              formatCurrency(
+                                double.parse(state
+                                    .espay.virtualAccountData.billAmount.value),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Paid By'),
+                            Text(
+                              state.espay.additionalInfo.productCode,
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Transaction Date'),
+                            Text(
+                              state.espay.virtualAccountData.trxDateTime
+                                  .toString(),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(18.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              WidgetsBinding.instance
+                                  .addPostFrameCallback((timeStamp) {
+                                final cubit = context.read<EspayCubit>();
+                                cubit.sendInvoice();
+                              });
+                            },
+                            child: const Text("Send"),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              WidgetsBinding.instance
+                                  .addPostFrameCallback((timeStamp) {
+                                final cubit = context.read<EspayCubit>();
+                                cubit.backToHome();
+                              });
+                            },
+                            child: const Text("Home"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             );
           }
           return Center(

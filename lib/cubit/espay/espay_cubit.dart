@@ -37,9 +37,18 @@ class EspayCubit extends Cubit<EspayState> {
     }
   }
 
-  void paymentSuccess() {
-    emit(const PaymentSuccess(message: 'Payment Success'));
-    print(apiCallTimer.isActive);
+  void sendInvoice() async {
+    final response = await espayRepository.getInvoice();
+  }
+
+  void backToHome() {
+    emit(EspayInitial());
+  }
+
+  void paymentSuccess() async {
+    final response = await espayRepository.getPaymentStatus();
+    emit(PaymentSuccess(espay: response, message: 'Payment Success'));
+    sendInvoice();
   }
 
   Future<void> getPaymentStatus() async {
