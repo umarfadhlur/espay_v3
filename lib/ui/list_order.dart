@@ -1,5 +1,6 @@
 import 'package:espay_v3/utils/rsa_key.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:espay_v3/utils/generate_random_string.dart';
@@ -51,6 +52,10 @@ class _ListOrderPageState extends State<ListOrderPage> {
               itemBuilder: (context, index) {
                 return GestureDetector(
                   onTap: () {
+                    Clipboard.setData(ClipboardData(
+                        text: "${dataList[index]['partnerReferenceNo']}"));
+                  },
+                  onLongPress: () {
                     _makeApiRequest('${dataList[index]['partnerReferenceNo']}');
                   },
                   child: ListTile(
@@ -108,7 +113,7 @@ class _ListOrderPageState extends State<ListOrderPage> {
       // Handle successful response (e.g., display data)
       setState(() {
         errorMessage = "";
-        print(responseData);
+        print(response.body);
       });
     } catch (error) {
       setState(() {

@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:espay_v3/cubit/espay/espay_cubit.dart';
+import 'package:espay_v3/ui/api_damcorp.dart';
 import 'package:espay_v3/ui/list_order.dart';
 import 'package:espay_v3/utils/rsa_key.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:espay_v3/utils/generate_random_string.dart';
@@ -14,9 +20,11 @@ class ApiAccessPage extends StatefulWidget {
 }
 
 class _ApiAccessPageState extends State<ApiAccessPage> {
-  Map<String, dynamic>? responseData;
+  Map<String, dynamic> responseData = {};
+  Map<String, dynamic> responsePayment = {};
   Map<String, dynamic>? responseDatabase;
   String errorMessage = "";
+  String myOrderNumber = "";
   final value = TextEditingController();
   bool isLoading = false;
 
@@ -42,119 +50,119 @@ class _ApiAccessPageState extends State<ApiAccessPage> {
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextFormField(
-              controller: value,
-            ),
-            ElevatedButton(
-              onPressed: _makeApiRequest,
-              child: const Text('Access API'),
-            ),
-            SizedBox(
-              width: double.infinity,
-              height: 200,
-              child: Center(
-                child: isLoading
-                    ? const CircularProgressIndicator()
-                    : responseData != null
-                        ? QrImage(
-                            data: responseData!['qrContent'],
-                            version: QrVersions.auto,
-                            size: 200,
-                          )
-                        : const SizedBox(),
+      body: BlocConsumer<EspayCubit, EspayState>(
+        listener: (context, state) {
+          if (state is QrisSuccess) {
+            showDialog(
+              context: context,
+              builder: (context) => BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
+                child: AlertDialog(
+                  content: SizedBox(
+                    width: 300.0, // Sesuaikan ukuran yang diinginkan
+                    height: 300.0, // Sesuaikan ukuran yang diinginkan
+                    child: QrImage(
+                      data: state.espay.qrContent,
+                      version: QrVersions.auto,
+                      size: 300,
+                    ),
+                  ),
+                ),
               ),
+            );
+            WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+              final cubit = context.read<EspayCubit>();
+              cubit.startApiCallTimer();
+            });
+          } else if (state is StatusSuccess) {
+            if (state.espay.virtualAccountData.paymentFlagStatus != 'S') {
+              WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+                final cubit = context.read<EspayCubit>();
+                cubit.getPaymentStatus();
+              });
+            } else {
+              bool isDialogActive(BuildContext context) {
+                return Navigator.of(context, rootNavigator: true).canPop();
+              }
+              if (isDialogActive(context)) {
+                Navigator.pop(context);
+              } else {
+                // Tidak ada dialog aktif
+                print('Tidak ada dialog aktif');
+              }
+              WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+                final cubit = context.read<EspayCubit>();
+                cubit.paymentSuccess();
+                cubit.stopApiCallTimer();
+              });
+            }
+          }
+        },
+        builder: (context, state) {
+          if (state is EspayInitial) {
+          } else if (state is EspayLoadInProgress) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (state is QrisFailure) {
+            return const Center(
+              child: Text('Exception'),
+            );
+          } else if (state is PaymentSuccess) {
+            return Center(
+              child: Text(state.message),
+            );
+          }
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextFormField(
+                  controller: value,
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (state is QrisSuccess) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
+                          child: AlertDialog(
+                            content: SizedBox(
+                              width: 300.0, // Sesuaikan ukuran yang diinginkan
+                              height: 300.0, // Sesuaikan ukuran yang diinginkan
+                              child: QrImage(
+                                data: state.espay.qrContent,
+                                version: QrVersions.auto,
+                                size: 300,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    } else {
+                      WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+                        final cubit = context.read<EspayCubit>();
+                        cubit.getQris(int.parse(value.text));
+                      });
+                    }
+                  },
+                  child: const Text('Access API'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const DamcorpPage()),
+                    );
+                  },
+                  child: const Text('Damcorp'),
+                ),
+                Text(state.toString()),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
-  }
-
-  void _makeApiRequest() async {
-    final String randomNumericString = generateRandomNumericString();
-    setState(() {
-      isLoading = true;
-      errorMessage = ""; // Clear any previous error message
-    });
-    try {
-      final timestamp = DateTime.now().toUtc().toIso8601String();
-      Map<String, dynamic> requestBody = {
-        "partnerReferenceNo": randomNumericString,
-        "merchantId": "SGWROYALABADISEJ",
-        "amount": {"value": value.text, "currency": "IDR"},
-        "additionalInfo": {"productCode": "QRIS"}
-      };
-      print(jsonEncode(requestBody));
-      final hexEncode = hexEncodeSHA256(jsonEncode(requestBody)).toLowerCase();
-      final stringToSign =
-          "POST:/api/v1.0/qr/qr-mpm-generate:$hexEncode:$timestamp"; // Adjust path if needed
-      final signature = generateSignature(
-          stringToSign, privateKey); // Assuming you have this function
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'X-TIMESTAMP': timestamp,
-        'X-SIGNATURE': signature,
-        'X-EXTERNAL-ID': randomNumericString, // Assuming you have this function
-        'X-PARTNER-ID': 'SGWROYALABADISEJ',
-        'CHANNEL-ID': 'ESPAY',
-      };
-
-      final pushDatabase = await http.post(
-        Uri.parse(
-            'https://espayapi.000webhostapp.com/api/postData.php'), // Adjust URL if needed
-        headers: headers,
-        body: jsonEncode(requestBody),
-      );
-
-      final response = await http.post(
-        Uri.parse(
-            'https://sandbox-api.espay.id/api/v1.0/qr/qr-mpm-generate'), // Adjust URL if needed
-        headers: headers,
-        body: jsonEncode(requestBody),
-      );
-
-      responseDatabase = jsonDecode(pushDatabase.body);
-      responseData = jsonDecode(response.body);
-
-      String getTrxIdFromUrl(String url) {
-        Uri uri = Uri.parse(url);
-        String trxId = uri.queryParameters['trx_id'] ?? '';
-        return trxId;
-      }
-
-      // Mendapatkan nilai trx_id dari qrUrl
-      String qrUrl = responseData!['qrUrl'];
-      String trxId = getTrxIdFromUrl(qrUrl);
-
-      // Handle successful response (e.g., display data)
-      setState(() async {
-        errorMessage = "";
-        Map<String, dynamic> requestPutBody = {
-          "partnerReferenceNo": randomNumericString,
-          "amountValue": value.text,
-          "trxId": trxId,
-        };
-
-        final putDatabase = await http.post(
-          Uri.parse(
-              'https://espayapi.000webhostapp.com/api/putData.php'), // Adjust URL if needed
-          headers: headers,
-          body: jsonEncode(requestPutBody),
-        );
-      });
-    } catch (error) {
-      setState(() {
-        errorMessage = error.toString();
-      });
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
   }
 }
